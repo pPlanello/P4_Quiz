@@ -109,10 +109,10 @@ const {log, biglog, errorlog, colorize} = require("./out");
 	 			 var goodAnswer = quiz.answer.toLowerCase().trim();				// cambiar de mayusculas a minusculas
  					if(answerToCmp === goodAnswer){
  						log('Su respuesta es: ');
- 						biglog('CORRECTA','green');
+ 						log('CORRECTA','green');
  					} else {
  						log('Su respuesta es: ');
- 						biglog('INCORRECTA','red');
+ 						log('INCORRECTA','red');
  					}
  					rl.prompt();
  				});
