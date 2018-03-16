@@ -1,7 +1,7 @@
 
-const model = require('./model');
+const {models} = require('./model');
 const {log, biglog, errorlog, colorize} = require("./out");
-
+const Sequelize = require('sequelize');
 
 
 /**
@@ -30,12 +30,47 @@ const {log, biglog, errorlog, colorize} = require("./out");
  */
  exports.listCmd = rl => {
 
- 		model.getAll().forEach((quiz, id) => {
- 			log(` [${colorize(id, 'magenta')}]: ${quiz.question} `);
+ 		models.quiz.findAll()
+ 		.each(quiz => {
+ 				log(` [${colorize(quiz.id, 'magenta')}]: ${quiz.question} `);
+ 		})
+ 		.catch(error => {
+ 			errorlog(error.message);
+ 		})
+ 		.then(() => {
+ 			rl.prompt();
  		});
 
- 		rl.prompt();
+
+
  }
+
+
+/**
+ * Esta funcion devuelve una promesa que:
+ *  - Valida que se ha introducido un valor para el parámetro.
+ *  - Convierte el parámetro en un número entero.
+ * Si todo va bien, la promesa se satisface y devuelve el valor de id a usar.
+ *
+ * @param id Parámetro con el índice a validar.
+ */
+ const validateId = id => {
+
+ 	return new Sequelize.Promise((resolve, reject) => {
+ 		if (typeof id === "undefined"){
+ 			reject(new Error(`Falta el parámetro <id>.`));
+ 		}  else {
+ 			id = parseInt(id);	//convertir el parámetro id en un número.
+
+ 			if (Number.isNaN(id)) {
+ 				reject(new Error(`El valor del parámetro <id> no es un número.`));
+ 			} else {
+ 				resolve(id);
+ 			}
+ 		}
+ 	});
+ };
+
 
 /**
  * Muestra el quiz indicado en el parámetro: la pregunta y la respuesta.
@@ -45,19 +80,41 @@ const {log, biglog, errorlog, colorize} = require("./out");
  */
  exports.showCmd = (rl, id) => {
  		
- 		if(typeof id === "undefined"){
- 			errorlog(`Falta el parámetro id.`);
- 		} else {
- 			try{
- 				const quiz = model.getByIndex(id);
- 				log(` [${colorize(id, 'magenta')}]: ${quiz.question} ${colorize('=>', 'magenta')} ${quiz.answer} `);
- 			} catch(error) {
- 				errorlog(error.message);
- 			}	
+ 	validateId(id)
+ 	.then(id => models.quiz.findById(id))
+ 	.then(quiz => {
+ 		if (!quiz) {
+ 			throw new Error(`No existe un quiz asociado al id=${id}.`);
  		}
-
+ 		log(` [${colorize(quiz.id, 'magenta')}]: ${quiz.question} ${colorize('=>', 'magenta')} ${quiz.answer}`);
+ 	})
+ 	.catch(error => {
+ 		errorlog(error.message);
+ 	})
+ 	.then(() => {
  		rl.prompt();
- }
+ 	});
+ };
+
+/**
+ * Esta funcion devuelve una promesa que cuando se cumple, proporciona el texto introducido
+ * Entonces la llamada a then que hay que hacer la promesa devuelta, será:
+ *			.then(answer => {....})
+ *
+ * También colorea en rojo el texto de la pregunta, elimina espacios al principio y final.
+ * 
+ * @param rl Objeto readline usado para implementar el CLI.
+ * @param text Pregunta que hay que hacerle al usario.
+*/
+const makeQuestion = (rl, text) =>{
+	return new Sequelize.Promise((resolve, reject) => {
+		rl.question(colorize(text, 'cyan'), answer =>{
+			resolve(answer.trim());
+		});
+	});
+};
+
+
 
  /**
  * Añade un nuevo quiz al modelo.
@@ -71,17 +128,30 @@ const {log, biglog, errorlog, colorize} = require("./out");
  * @param rl  Objeto readline usado para implementar el CLI.
  */
  exports.addCmd = rl => {
- 		
- 		rl.question(colorize('Introduzca una pregunta: ', 'green'), question => {
- 			rl.question(colorize('Introduzca la respuesta: ', 'green'), answer => {
- 				model.add(question, answer);
- 				log(` ${colorize('Se ha añadido', 'magenta')}: ${colorize(question, 'cyan')} ${colorize('=>', 'magenta')} ${colorize(answer, 'cyan')}`);
- 				rl.prompt();
- 			});
+ 	makeQuestion(rl, 'Introduzca una pregunta: ')
+ 	.then(q => {
+ 		return makeQuestion(rl, 'Introduzca la respuesta: ')
+ 		.then(a =>{
+ 			return {question: q, answer: a};
  		});
-
+ 	})
+ 	.then(quiz => {
+ 		return models.quiz.create(quiz);
+ 	})
+ 	.then(quiz => {
+ 		log(` ${colorize('Se ha añadido', 'magenta')}: ${quiz.question} ${colorize('=>', 'magenta')} ${answer.question}. `);
+ 	})
+ 	.catch(Sequelize.ValidationError, error => {
+ 		errorlog('El quiz es erroneo: ');
+ 		error.errors.forEach(({message}) => errorlog(message));
+ 	})
+ 	.catch(error => {
+ 		errorlog(error.message);
+ 	})
+ 	.then(() => {
  		rl.prompt();
- }
+ 	});
+ };
 
  /**
  * Prueba un quiz del modelo.
@@ -91,36 +161,62 @@ const {log, biglog, errorlog, colorize} = require("./out");
  */
  exports.testCmd = (rl, id) => {
 
- 		if(typeof id === "undefined"){
- 			errorlog(`Falta el parámetro id.`);
+ 		validateId(id)
+ 		.then(id => models.quiz.findById(id) )
+ 		.then(quiz => {
+ 			if (!quiz) {
+ 				throw new Error(`No existe un quiz asociado al id=${id}.`);
+ 			}
+ 			log(`La pregunta es: ${quiz.question} `);
+ 			return makeQuestion(rl, 'Introduzca la respuesta: ')
+ 				.then(a =>{
+ 					if(a.toLowerCase().replace(/[^a-zA-Z 0-9.]+/g,' ').trim() === quiz.answer.toLowerCase().replace(/[^a-zA-Z 0-9.]+/g,' ').trim()) {
+ 						log('CORRECTA', 'green');
+ 					} else {
+ 						log('INCORRECTA', 'red');
+ 					}
+ 				});
+ 		})
+ 		.catch(error =>{
+ 			errorlog(error.message);
+ 		})
+ 		.then(() => {
  			rl.prompt();
- 		} else {
- 			try{
- 				const quiz = model.getByIndex(id);
- 				log(`La pregunta es : ${quiz.question}`);
-
- 				rl.question(`Introduce la respuesta: `, answer => {
- 					// Respuesta del jugador
-	 			 var answerSimbol = answer.replace(/[^a-zA-Z 0-9.]+/g,' ');	// eliminar símbolos raros
-	 			 var answerSpace = answerSimbol.replace(/\s+/g,' ');   	// eliminar espacios
-	 			 var answerToCmp = answerSpace.toLowerCase().trim();			// cambio de mayusculas a minusculas
+ 		});
+ 		// ____________________________________________________________________________________________________________________
+ 		//if(typeof id === "undefined"){
+ 		//	errorlog(`Falta el parámetro id.`);
+ 		//	rl.prompt();
+ 		//} else {
+ 		//	try{
+ 		//		const quiz = model.getByIndex(id);
+ 		//		log(`La pregunta es : ${quiz.question}`);
+ 		//
+ 		//		rl.question(`Introduce la respuesta: `, answer => {
+ 		//			// Respuesta del jugador
+	 	//		 var answerSimbol = answer.replace(/[^a-zA-Z 0-9.]+/g,' ');	// eliminar símbolos raros
+	 	//		 var answerSpace = answerSimbol.replace(/\s+/g,' ');   	// eliminar espacios
+	 	//		 var answerToCmp = answerSpace.toLowerCase().trim();			// cambio de mayusculas a minusculas
 
 	 			 	// Respuesta correcta del test
-	 			 var goodAnswer = quiz.answer.toLowerCase().trim();				// cambiar de mayusculas a minusculas
- 					if(answerToCmp === goodAnswer){
- 						log('Su respuesta es: ');
- 						log('CORRECTA','green');
- 					} else {
- 						log('Su respuesta es: ');
- 						log('INCORRECTA','red');
- 					}
- 					rl.prompt();
- 				});
- 			} catch (error){
- 				errorlog(error.message);
- 				rl.prompt();
- 			}
- 		}	
+	 	//		 var goodAnswer = quiz.answer.toLowerCase().trim();				// cambiar de mayusculas a minusculas
+ 		//			if(answerToCmp === goodAnswer){
+ 		//				log('Su respuesta es: ');
+ 		//				log('CORRECTA','green');
+ 		//			} else {
+ 		//				log('Su respuesta es: ');
+ 		//				log('INCORRECTA','red');
+ 		//			}
+ 		//			rl.prompt();
+ 		//		});
+ 		//	} catch (error){
+ 		//		errorlog(error.message);
+ 		//		rl.prompt();
+ 		//	}
+ 		//	
+ 		//}
+ 		// __________________________________________________________________________________________________________________
+
  };
 
  /**
@@ -130,60 +226,130 @@ const {log, biglog, errorlog, colorize} = require("./out");
  * @param rl  Objeto readline usado para implementar el CLI.
  */
  exports.playCmd = rl => {
+ 	let score = 0;
+ 	let numQuestion = 0;
+ 	let toBeResolved = [];
 
- 		if(model.count() == 0){
- 			log('No hay preguntas para jugar');
+ 	models.quiz.findAll()
+ 	.each(quiz => {
+ 		++numQuestion;
+ 		toBeResolved.lenght = numQuestion;
+ 		toBeResolved.push(quiz.id);
+ 	})
+ 	.then(() => {
+ 		if (numQuestion == 0) {
+ 			log('No hay preguntas por jugar, lo siento.', 'red');
+ 		} else {
+ 			playOne();
+ 		}
+ 	})
+ 	.catch(error => {
+ 		errorlog(error.message);
+ 	})
+ 	.then(() => {
+ 		rl.prompt();
+ 	});
+
+ 	const playOne = () => {
+
+ 		let randomId = Math.floor(Math.random()*(numQuestion-score)); // numero al azar del array de IDs
+ 		
+ 		models.quiz.findById(toBeResolved[randomId])
+ 		.then(quiz => {
+ 			log(`La pregunta es: ${quiz.question} `);
+ 			return makeQuestion(rl, 'Introduzca la respuesta: ')
+ 				.then(a =>{
+ 					if(a.toLowerCase().replace(/[^a-zA-Z 0-9.]+/g,' ').trim() === quiz.answer.toLowerCase().replace(/[^a-zA-Z 0-9.]+/g,' ').trim()) {
+ 						log('CORRECTO', 'green');
+ 						++score;
+ 						if(score < numQuestion){
+ 							toBeResolved.splice(randomId, 1);	//Eliminar el la pregunta de la posicion randomId
+ 							rl.prompt();
+ 							playOne();
+ 						} else {
+ 							log('Enhorabuena!!!', 'green');
+	 			 			log('Has acertado todas las preguntas', 'green');
+ 						}
+ 					} else {
+ 						log(`Su respuesta es: ${colorize('INCORRECTA', 'red')} `);
+	 				 	log(`Ha acertado: ${colorize(score, 'magenta')} de ${colorize(numQuestion, 'magenta')} preguntas`);
+	 				 	log('FIN DEL JUEGO', 'yellow');	
+ 					}
+ 				})
+ 				.catch(error => {
+ 					errorlog(error.message);
+ 				})
+ 				.then(() => {
+ 					rl.prompt();
+ 				});
+ 		})	
+ 		.catch(error => {
+ 			errorlog(error.message);
+ 		})
+ 		.then(() => {
  			rl.prompt();
- 			return;
- 		}
+ 		});
+ 	};
 
- 		var score = 0;
- 		var toBeResolved = [];						// es un array para cada id
- 		toBeResolved.lenght = model.count();  		// inicio de array con el numero de preguntas que hay
- 		var long = toBeResolved.lenght;
+}; 
 
- 		for (var i=0; i<toBeResolved.lenght; i++){
- 			toBeResolved.push(i);					// introducir los indices en un array
- 		}
+ 		// __________________________________________________________________________________________________________________
+ 		//if(model.count() == 0){
+ 		//	log('No hay preguntas para jugar');
+ 		//	rl.prompt();
+ 		//	return;
+ 		//}
 
- 		const playOne = () => {
- 			var randomId = Math.floor(Math.random()*(long-score));	// numero al azar para el array de id
- 			var idRandom = toBeResolved[randomId];
- 			const quiz = model.getByIndex(idRandom);
+ 		//var score = 0;
+ 		//var toBeResolved = [];						// es un array para cada id
+ 		//toBeResolved.lenght = model.count();  		// inicio de array con el numero de preguntas que hay
+ 		//var long = toBeResolved.lenght;
 
- 			log(`${quiz.question}? `);								//Se lanza la pregunta
- 			rl.question('Introduce la respuesta: ', answer => {
+ 		//for (var i=0; i<toBeResolved.lenght; i++){
+ 		//	toBeResolved.push(i);					// introducir los indices en un array
+ 		//}
+
+ 		//const playOne = () => {
+ 		//	var randomId = Math.floor(Math.random()*(long-score));	// numero al azar para el array de id
+ 		//	var idRandom = toBeResolved[randomId];
+ 		//	const quiz = model.getByIndex(idRandom);
+
+ 		//	log(`${quiz.question}? `);								//Se lanza la pregunta
+ 		//	rl.question('Introduce la respuesta: ', answer => {
 	 			 	// Respuesta del jugador
-	 			 var answerSimbol = answer.replace(/[^a-zA-Z 0-9.]+/g,' ');	// eliminar símbolos raros
-	 			 var answerSpace = answerSimbol.replace(/\s+/g,' ');   	// eliminar espacios
-	 			 var answerToCmp = answerSpace.toLowerCase().trim();			// cambio de mayusculas a minusculas
+	 	//		 var answerSimbol = answer.replace(/[^a-zA-Z 0-9.]+/g,' ');	// eliminar símbolos raros
+	 	//		 var answerSpace = answerSimbol.replace(/\s+/g,' ');   	// eliminar espacios
+	 	//		 var answerToCmp = answerSpace.toLowerCase().trim();			// cambio de mayusculas a minusculas
 
 	 			 	// Respuesta correcta del test
-	 			 var goodAnswer = quiz.answer.toLowerCase().trim();				// cambiar de mayusculas a minusculas
+	 	//		 var goodAnswer = quiz.answer.toLowerCase().trim();				// cambiar de mayusculas a minusculas
 
-	 			 if (answerToCmp === goodAnswer){
-	 			 	log(`Su respuesta es: CORRECTA `);
-	 			 	++score;
-	 			 	if(score < long){
-	 			 		toBeResolved.splice(randomId, 1);		// eliminar 1 elemento desde la posición randomId
-	 			 		rl.prompt();
-	 					playOne();								// ejecución recursiva
-	 		 		} else {
-	 		 			log('Enhorabuena!!!');
-	 		 			log('Has acertado todas las preguntas');
-	 		 			rl.prompt();
-	 		 		}
-	 		 	} else {
-			 		log(`Su respuesta es: INCORRECTA`);
-	 			 	log(`Ha acertado: ${score} de ${long} preguntas`);
-	 			 	log('FIN DEL JUEGO', 'yellow');
-	 			 	rl.prompt();
-	 			}
- 			});
- 		}
- 		playOne();
+	 	//		 if (answerToCmp === goodAnswer){
+	 	//		 	log(`Su respuesta es: CORRECTA `);
+	 	//		 	++score;
+	 	//		 	if(score < long){
+	 	//		 		toBeResolved.splice(randomId, 1);		// eliminar 1 elemento desde la posición randomId
+	 	//		 		rl.prompt();
+	 	//				playOne();								// ejecución recursiva
+	 	//	 		} else {
+	 	//	 			log('Enhorabuena!!!');
+	 	//	 			log('Has acertado todas las preguntas');
+	 	//	 			rl.prompt();
+	 	//	 		}
+	 	//	 	} else {
+		//	 		log(`Su respuesta es: INCORRECTA`);
+	 	//		 	log(`Ha acertado: ${score} de ${long} preguntas`);
+	 	//		 	log('FIN DEL JUEGO', 'yellow');
+	 	//		 	rl.prompt();
+	 	//		}
+ 		//	});
+ 		//}
+ 		//playOne();
+ 		// ____________________________________________________________________________________________________________________
 
- 	};
+
+
+
 
  /**
  * Borra el quiz del modelo.
@@ -192,18 +358,14 @@ const {log, biglog, errorlog, colorize} = require("./out");
  * @param id clave del quiz a borrar.
  */
  exports.deleteCmd = (rl, id) => {
- 		
- 		if(typeof id === "undefined"){
- 			errorlog(`Falta el parámetro id.`);
- 		} else {
- 			try{
- 				model.deleteByIndex(id);
- 			} catch(error) {
- 				errorlog(error.message);
- 			}	
- 		}
-
+ 	validateId(id)
+ 	.then(id => models.quiz.destroy({where: {id} }) )
+ 	.catch(error => {
+ 		errorlog(error.message);
+ 	})
+ 	.then(() => {
  		rl.prompt();
+ 	});
  };
 
  /**
@@ -218,28 +380,41 @@ const {log, biglog, errorlog, colorize} = require("./out");
  * @param id clave del quiz a editar.
  */
  exports.editCmd = (rl, id) => {
- 		
- 		if(typeof id === "undefined"){
- 			errorlog(`Falta el parámetro id.`);
- 			rl.prompt();
- 		} else {
- 			try{
- 				const quiz = model.getByIndex(id);
-
- 				process.stdout.isTTY && setTimeout(() => {rl.write(quiz.question)}, 0);    //genera la pregunta (ya escrita) para poder editarlo
- 				rl.question(colorize('Introduzca una pregunta: ', 'green'), question => {
- 					process.stdout.isTTY && setTimeout(() => {rl.write(quiz.answer)}, 0); //genera la respuesta (ya escrita) para poder editarlo
- 					rl.question(colorize('Introduzca la respuesta: ', 'green'), answer => {
- 						model.update(id, question, answer);
- 						log(` Se ha cambiado el quiz ${colorize(id, 'magenta')} por: ${colorize(question, 'cyan')} ${colorize('=>', 'magenta')} ${colorize(answer, 'cyan')}`);
- 						rl.prompt();
- 					});
- 				});
- 			} catch(error) {
- 				errorlog(error.message);
- 				rl.prompt();
- 			}	
+ 	validateId(id)
+ 	.then(id => models.quiz.findById(id) )
+ 	.then(quiz => {
+ 		if(!quiz) {
+ 			throw new Error(`No existe un quiz asociado al id=${id}.`);
  		}
+
+ 		process.stdout.isTTY && setTimeout(() => {rl.write(quiz.question)}, 0);
+ 		return makeQuestion(rl, 'Introduzca la pregunta: ')
+ 		.then(q => {
+ 			process.stdout.isTTY && setTimeout(() => {rl.write(quiz.answer)}, 0);
+ 			return makeQuestion(rl, 'Introduzca la respuesta: ')
+ 			.then(a => {
+ 				quiz.question = q;
+ 				quiz.answer = a;
+ 				return quiz;
+ 			});
+ 		});
+ 	})
+ 	.then(quiz => {
+ 		return quiz.save();
+ 	})
+ 	.then(quiz => {
+ 		log(`Se ha cambiado el quiz ${colorize(quiz.id, 'magenta')} por: ${quiz.question} ${colorize('=>', 'magenta')} ${quiz.answer}`);
+ 	})
+ 	.catch(Sequelize.ValidationError, error => {
+ 		errorlog('El quiz es erroneo: ');
+ 		error.errors.forEach(({message}) => errorlog(message) );
+ 	})
+ 	.catch(error => {
+ 		errorlog(error.message);
+ 	})
+ 	.then(() => {
+ 		rl.prompt();
+ 	});
  };
 
  /**
