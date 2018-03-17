@@ -183,40 +183,7 @@ const makeQuestion = (rl, text) =>{
  		.then(() => {
  			rl.prompt();
  		});
- 		// ____________________________________________________________________________________________________________________
- 		//if(typeof id === "undefined"){
- 		//	errorlog(`Falta el parámetro id.`);
- 		//	rl.prompt();
- 		//} else {
- 		//	try{
- 		//		const quiz = model.getByIndex(id);
- 		//		log(`La pregunta es : ${quiz.question}`);
- 		//
- 		//		rl.question(`Introduce la respuesta: `, answer => {
- 		//			// Respuesta del jugador
-	 	//		 var answerSimbol = answer.replace(/[^a-zA-Z 0-9.]+/g,' ');	// eliminar símbolos raros
-	 	//		 var answerSpace = answerSimbol.replace(/\s+/g,' ');   	// eliminar espacios
-	 	//		 var answerToCmp = answerSpace.toLowerCase().trim();			// cambio de mayusculas a minusculas
-
-	 			 	// Respuesta correcta del test
-	 	//		 var goodAnswer = quiz.answer.toLowerCase().trim();				// cambiar de mayusculas a minusculas
- 		//			if(answerToCmp === goodAnswer){
- 		//				log('Su respuesta es: ');
- 		//				log('CORRECTA','green');
- 		//			} else {
- 		//				log('Su respuesta es: ');
- 		//				log('INCORRECTA','red');
- 		//			}
- 		//			rl.prompt();
- 		//		});
- 		//	} catch (error){
- 		//		errorlog(error.message);
- 		//		rl.prompt();
- 		//	}
- 		//	
- 		//}
- 		// __________________________________________________________________________________________________________________
-
+ 		
  };
 
  /**
@@ -264,8 +231,13 @@ const makeQuestion = (rl, text) =>{
  						++score;
  						if(score < numQuestion){
  							toBeResolved.splice(randomId, 1);	//Eliminar el la pregunta de la posicion randomId
- 							rl.prompt();
- 							playOne();
+	 						models.quiz.findById(randomId)
+	 							.then(() => {
+	 								rl.prompt();
+	 							})
+	 							.then(() => {
+	 								playOne();
+	 							});
  						} else {
  							log('Enhorabuena!!!', 'green');
 	 			 			log('Has acertado todas las preguntas', 'green');
@@ -278,10 +250,10 @@ const makeQuestion = (rl, text) =>{
  				})
  				.catch(error => {
  					errorlog(error.message);
- 				})
- 				.then(() => {
- 					rl.prompt();
  				});
+ 				//.then(() => {
+ 				//	rl.prompt();
+ 				//});
  		})	
  		.catch(error => {
  			errorlog(error.message);
