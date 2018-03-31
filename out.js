@@ -11,6 +11,7 @@ const chalk = require('chalk');
  * @returns {string} Devuelve el string msg con el color indicado.
  */
 const colorize = (msg, color) => {
+
 	if (typeof color !== "undefined"){
 		msg = chalk[color].bold(msg);
 	}
@@ -23,8 +24,9 @@ const colorize = (msg, color) => {
  * @param msg    El string a escribir.
  * @param color  Color del texto.
  */
-const log = (msg, color) => {
-	 console.log(colorize(msg, color));
+const log = (socket, msg, color) => {
+
+	 socket.write(colorize(msg, color) + "\n");
 };
 
 /**
@@ -33,8 +35,9 @@ const log = (msg, color) => {
  * @param msg    El string a escribir.
  * @param color  Color del texto.
  */
-const biglog = (msg, color) => {
-	log(figlet.textSync(msg, {horizontalLayout: 'full'}), color);
+const biglog = (socket, msg, color) => {
+
+	log(socket, figlet.textSync(msg, {horizontalLayout: 'full'}), color);
 };
 
 /**
@@ -42,8 +45,9 @@ const biglog = (msg, color) => {
  *
  * @param emsg    Texto del mensaje de error.
  */
-const errorlog = (emsg) => {
-	console.log(`${colorize("Error", "red")}: ${colorize(colorize(emsg, "red"), "bgYellowBright")}`);
+const errorlog = (socket, emsg) => {
+
+	socket.write(`${colorize("Error", "red")}: ${colorize(colorize(emsg, "red"), "bgYellowBright")}\n`);
 };
 
 
